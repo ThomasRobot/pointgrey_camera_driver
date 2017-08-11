@@ -51,6 +51,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include <fstream>
 
+#include <custom_msgs/PacketCounter.h>
+
 namespace pointgrey_camera_driver
 {
 
@@ -308,6 +310,9 @@ private:
                updater_,
                diagnostic_updater::FrequencyStatusParam(&min_freq_, &max_freq_, freq_tolerance, window_size),
                diagnostic_updater::TimeStampStatusParam(min_acceptable, max_acceptable)));
+
+    imu_packet_counter_sub_ = nh.subscribe("/mti/sensor/packet_counter", 1, &PointGreyCameraNodelet::imuPacketCounterCallback, this);
+    is_imu_packet_counter_avalible_ = false;
   }
 
   /**
@@ -490,7 +495,20 @@ private:
 
             wfov_image->temperature = pg_.getCameraTemperature();
 
-            ros::Time time = ros::Time::now();
+            // ros::Time time = ros::Time::now();
+            ros::Time time;
+            if (is_imu_packet_counter_avalible_)
+            {
+              time = imu_packet_counter_time_;
+              is_imu_packet_counter_avalible_ = false;
+              // ROS_INFO("Using time provided by IMU");
+            }
+            else
+            {
+              time = ros::Time::now();
+              ROS_WARN("IMU packet couter not avalible");
+            }
+
             wfov_image->header.stamp = time;
             wfov_image->image.header.stamp = time;
 
@@ -558,6 +576,15 @@ private:
     }
   }
 
+  void imuPacketCounterCallback(const custom_msgs::PacketCounterConstPtr& msg)
+  {
+    if ((msg->counter % 16) == 0)
+    {
+      imu_packet_counter_time_ = msg->header.stamp;
+      is_imu_packet_counter_avalible_ = true;
+    }
+  }
+
   boost::shared_ptr<dynamic_reconfigure::Server<pointgrey_camera_driver::PointGreyConfig> > srv_; ///< Needed to initialize and keep the dynamic_reconfigure::Server in scope.
   boost::shared_ptr<image_transport::ImageTransport> it_; ///< Needed to initialize and keep the ImageTransport in scope.
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_; ///< Needed to initialize and keep the CameraInfoManager in scope.
@@ -599,6 +626,11 @@ private:
 
   /// Configuration:
   pointgrey_camera_driver::PointGreyConfig config_;
+
+  // IMU synchronizing
+  ros::Subscriber imu_packet_counter_sub_;
+  bool is_imu_packet_counter_avalible_;
+  ros::Time imu_packet_counter_time_;
 };
 
 PLUGINLIB_DECLARE_CLASS(pointgrey_camera_driver, PointGreyCameraNodelet, pointgrey_camera_driver::PointGreyCameraNodelet, nodelet::Nodelet);  // Needed for Nodelet declaration

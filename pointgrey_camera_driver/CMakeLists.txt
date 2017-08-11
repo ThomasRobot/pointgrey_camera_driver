@@ -20,8 +20,9 @@ catkin_package(CATKIN_DEPENDS
 # the Point Grey EULA prohibits redistributing the headers or the packages which
 # contains them. We work around this by downloading the archive directly from
 # their website during this step in the build process.
+set(POINTGREY_INCLUDE_DIR "/usr/include")
 find_library(POINTGREY_LIB NAMES libflycapture.so.2 flycapture)
-file(GLOB_RECURSE POINTGREY_HEADER ${POINTGREY_INCLUDE_DIR}*/flycapture/FlyCapture2.h ${CMAKE_CURRENT_BINARY_DIR}/usr/include*/flycapture/FlyCapture2.h)
+file(GLOB_RECURSE POINTGREY_HEADER ${POINTGREY_INCLUDE_DIR}/flycapture/FlyCapture2.h ${CMAKE_CURRENT_BINARY_DIR}/usr/include*/flycapture/FlyCapture2.h)
 if(NOT POINTGREY_LIB OR NOT POINTGREY_HEADER)
   # flycapture not present, must download.
   message(STATUS "libflycapture not found in system library path")
