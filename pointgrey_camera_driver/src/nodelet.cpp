@@ -311,7 +311,7 @@ private:
                diagnostic_updater::FrequencyStatusParam(&min_freq_, &max_freq_, freq_tolerance, window_size),
                diagnostic_updater::TimeStampStatusParam(min_acceptable, max_acceptable)));
 
-    imu_packet_counter_sub_ = nh.subscribe("/mti/sensor/packet_counter", 1, &PointGreyCameraNodelet::imuPacketCounterCallback, this);
+    imu_packet_counter_sub_ = nh.subscribe("/mti/sensor/packet_counter", 400, &PointGreyCameraNodelet::imuPacketCounterCallback, this);
     is_imu_packet_counter_avalible_ = false;
   }
 
@@ -501,7 +501,7 @@ private:
             {
               time = imu_packet_counter_time_;
               is_imu_packet_counter_avalible_ = false;
-              // ROS_INFO("Using time provided by IMU");
+              ROS_DEBUG("Using time provided by IMU");
             }
             else
             {
@@ -578,6 +578,7 @@ private:
 
   void imuPacketCounterCallback(const custom_msgs::PacketCounterConstPtr& msg)
   {
+    ROS_DEBUG("PC:%d", msg->counter);
     if ((msg->counter % 16) == 0)
     {
       imu_packet_counter_time_ = msg->header.stamp;
