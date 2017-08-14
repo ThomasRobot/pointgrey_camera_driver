@@ -142,6 +142,11 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
   config.white_balance_blue = blue;
   config.white_balance_red = red;
 
+  // Set auto range
+  uint32_t auto_shutter_min = config.auto_shutter_min;
+  uint32_t auto_shutter_max = config.auto_shutter_max;
+  PointGreyCamera::setAutoRange(AR_SHUTTER, auto_shutter_min, auto_shutter_max);
+
   // Set trigger
   switch (config.trigger_polarity)
   {
@@ -199,6 +204,18 @@ void PointGreyCamera::setGain(double &gain)
 void PointGreyCamera::setBRWhiteBalance(bool auto_white_balance, uint16_t &blue, uint16_t &red)
 {
   PointGreyCamera::setWhiteBalance(auto_white_balance, blue, red);
+}
+
+void PointGreyCamera::setAutoRange(AutoRangeType type, uint32_t &min_val, uint32_t &max_val)
+{
+  static const uint32_t addrs[] = {0x1088, 0x1098, 0x10A0};
+  assert(type >= 0 && type < (sizeof(addrs)));
+
+  uint32_t value = 0;
+  value += min_val << 12;
+  value += max_val;
+  Error error = cam_.WriteRegister(addrs[type], value);
+  handleError("PointGreyCamera::setWhiteBalance  Failed to write to register.", error);
 }
 
 void PointGreyCamera::setVideoMode(FlyCapture2::VideoMode &videoMode)

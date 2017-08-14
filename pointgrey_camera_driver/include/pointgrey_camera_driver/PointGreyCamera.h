@@ -49,6 +49,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 class PointGreyCamera
 {
 
+private:
+  enum AutoRangeType {AR_EXPOSURE, AR_SHUTTER, AR_GAIN};
+
 public:
   PointGreyCamera();
   ~PointGreyCamera();
@@ -160,6 +163,8 @@ public:
   void setGain(double &gain);
 
   void setBRWhiteBalance(bool auto_white_balance, uint16_t &blue, uint16_t &red);
+
+  void setAutoRange(AutoRangeType type, uint32_t &min_val, uint32_t &max_val);
 
   uint getGain();
 
