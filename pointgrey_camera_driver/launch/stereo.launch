@@ -29,9 +29,9 @@
                value="file://$(env HOME)/.ros/camera_info/$(arg left_camera_serial).yaml" />
       </node>
 
-      <node pkg="nodelet" type="nodelet" name="image_proc_debayer"
+      <!--node pkg="nodelet" type="nodelet" name="image_proc_debayer"
           args="load image_proc/debayer camera_nodelet_manager">
-      </node>
+      </node-->
     </group>
 
     <group ns="right" >
@@ -52,9 +52,9 @@
                value="file://$(env HOME)/.ros/camera_info/$(arg right_camera_serial).yaml" />
       </node>
 
-      <node pkg="nodelet" type="nodelet" name="image_proc_debayer"
+      <!--node pkg="nodelet" type="nodelet" name="image_proc_debayer"
           args="load image_proc/debayer camera_nodelet_manager">
-      </node>
+      </node-->
 
     </group>
 
