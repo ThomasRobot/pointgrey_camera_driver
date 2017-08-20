@@ -34,14 +34,24 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <iostream>
 #include <sstream>
 #include <flycapture/FlyCapture2Defs.h>
+#include <cv_bridge/cv_bridge.h>
 
 using namespace FlyCapture2;
+
+struct Color
+{
+  uchar y, r, g, b;
+  Color(uchar _y, uchar _r, uchar _g, uchar _b) : y(_y), r(_r), g(_g), b(_b) {}
+  bool operator < (const Color &c1) const{ return (y > c1.y);}
+};
 
 PointGreyCamera::PointGreyCamera():
   busMgr_(), cam_()
 {
   serial_ = 0;
   captureRunning_ = false;
+  auto_white_balance_software_ = false;
+  awb_thread_.reset(new boost::thread(&PointGreyCamera::autoAdjustWhiteBalance, this));
 }
 
 PointGreyCamera::~PointGreyCamera()
@@ -141,6 +151,7 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
   retVal &= PointGreyCamera::setWhiteBalance(config.auto_white_balance, blue, red);
   config.white_balance_blue = blue;
   config.white_balance_red = red;
+  auto_white_balance_software_ = config.auto_white_balance_software;
 
   // Set auto range
   uint32_t auto_shutter_min = config.auto_shutter_min;
@@ -329,7 +340,8 @@ bool PointGreyCamera::setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::Pixel
 
   // Stop the camera to allow settings to change.
   error = cam_.SetFormat7Configuration(&fmt7ImageSettings, fmt7PacketInfo.recommendedBytesPerPacket);
-  PointGreyCamera::handleError("PointGreyCamera::setFormat7 Could not send Format7 configuration to the camera", error);
+  PointGreyCamera::
+handleError("PointGreyCamera::setFormat7 Could not send Format7 configuration to the camera", error);
 
   // Get camera info to check if camera is running in color or mono mode
   CameraInfo cInfo;
@@ -425,6 +437,7 @@ bool PointGreyCamera::getVideoModeFromString(std::string &vmode, FlyCapture2::Vi
   return retVal;
 }
 
+
 bool PointGreyCamera::getFormat7PixelFormatFromString(std::string &sformat, FlyCapture2::PixelFormat &fmt7PixFmt)
 {
   // return true if we can set values as desired.
@@ -515,7 +528,8 @@ bool PointGreyCamera::setProperty(const FlyCapture2::PropertyType &type, const b
     if(valueB < pInfo.min)
     {
       valueB = pInfo.min;
-      retVal &= false;
+      retVal &= false
+;
     }
     else if(valueB > pInfo.max)
     {
@@ -1082,6 +1096,15 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
   {
     throw std::runtime_error("PointGreyCamera::grabImage not connected!");
   }
+
+  if (auto_white_balance_software_)
+  {
+    boost::mutex::scoped_try_lock lock(awb_mutex_);
+    if (lock)
+    {
+      awb_img_ = cv_bridge::toCvCopy(image, "bgr8")->image;
+    }
+  }
 }
 
 void PointGreyCamera::grabStereoImage(sensor_msgs::Image &image, const std::string &frame_id, sensor_msgs::Image &second_image, const std::string &second_frame_id)
@@ -1198,7 +1221,8 @@ uint PointGreyCamera::getExposure()
 
 uint PointGreyCamera::getWhiteBalance()
 {
-  return metadata_.embeddedExposure >> 8;
+  // return metadata_.embeddedExposure >> 8;
+  return metadata_.embeddedWhiteBalance;
 }
 
 uint PointGreyCamera::getROIPosition()
@@ -1242,3 +1266,186 @@ void PointGreyCamera::handleError(const std::string &prefix, const FlyCapture2::
     throw std::runtime_error(prefix + start + out.str() + " " + desc);
   }
 }
+
+void PointGreyCamera::autoAdjustWhiteBalance()
+{
+  ROS_INFO("In autoAdjustWhiteBalance()");
+  ros::Rate rate(100);
+  const int dW = 256, dH = 256;
+  while (ros::ok())
+  {
+    boost::mutex::scoped_lock lock(awb_mutex_);
+    if (!awb_img_.empty())
+    {
+      cv::Mat img;
+      cv::cvtColor(awb_img_, img, CV_BGR2YCrCb);
+      // cv::imshow("awb_img_", awb_img_);
+      std::vector<cv::Mat> chs;
+      cv::split(img, chs);
+      cv::Mat Y = chs[0];
+      cv::Mat Cr = chs[1];
+      cv::Mat Cb = chs[2];
+      // cv::imshow("Y", Y);
+      //cv::imshow("Cr", Cr);
+      //cv::imshow("Cb", Cb);
+      
+      std::vector<cv::Mat> chs1;
+      cv::split(awb_img_, chs1);
+      cv::Mat B = chs1[0];
+      cv::Mat G = chs1[1];
+      cv::Mat R = chs1[2];
+
+      // std::cout << cv::mean(img) << std::endl;
+      // std::cout << cv::mean(Cr) << std::endl;
+      // std::cout << cv::mean(Cb) << std::endl;
+
+      //
+      int nW = std::ceil((float)img.cols / dW);
+      int nH = std::ceil((float)img.rows / dH);
+      // ROS_INFO("nW=%d, nH=%d", nW, nH);
+
+      //
+      // std::vector<std::vector<float> > Mb(nH, std::vector<float>(nW, 0.0f)), Mr(nH, std::vector<float>(nW, 0.0f));
+      std::vector<std::vector<double> > Mb(nH, std::vector<double>(nW, 0.0f)), Mr(nH, std::vector<double>(nW, 0.0f));
+      std::vector<std::vector<bool> > valid(nH, std::vector<bool>(nW, true));
+      for (int r = 0; r < nH; ++r)
+      {
+        for (int c = 0; c < nW; ++c)
+        {
+          cv::Mat s_Cr = Cr(cv::Rect(c * dW, r * dH, dW, dH));
+          cv::Mat s_Cb = Cb(cv::Rect(c * dW, r * dH, dW, dH));
+          Mr[r][c] = cv::mean(s_Cr)[0];
+          Mb[r][c] = cv::mean(s_Cb)[0];
+          double Dr = cv::norm(s_Cr - Mr[r][c], cv::NORM_L1)/(dW*dH);
+          double Db = cv::norm(s_Cb - Mb[r][c], cv::NORM_L1)/(dW*dH);
+          if (Dr < 1.5 || Db < 1.5)
+            valid[r][c] = false;
+          // ROS_INFO("Mr/Mb of (%d,%d) is %lf/%lf", r, c, Mr[r][c], Mb[r][c]);
+          // ROS_INFO("Dr/Db of (%d,%d) is %lf/%lf", r, c, Dr, Db);
+        }
+      }
+
+      double a_Mr = 0.0, a_Mb = 0.0;
+      int valid_count = 0;
+      for (int r = 0; r < nH; ++r)
+      {
+        for (int c = 0; c < nW; ++c)
+        {
+          if (valid[r][c]) 
+          {
+            a_Mr += Mr[r][c];
+            a_Mb += Mb[r][c];
+            valid_count++;
+          }
+        }
+      }
+      if (valid_count == 0)
+      {
+        ROS_WARN("Not enough valid white patch");
+        continue;
+      }
+      a_Mr /= valid_count;
+      a_Mb /= valid_count;
+
+      double a_Dr = 0.0, a_Db = 0.0;
+      for (int r = 0; r < nH; ++r)
+      {
+        for (int c = 0; c < nW; ++c)
+        {
+          if (valid[r][c])
+          {
+            cv::Mat s_Cr = Cr(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_Cb = Cb(cv::Rect(c * dW, r * dH, dW, dH));
+            a_Dr += cv::norm(s_Cr - a_Mr, cv::NORM_L1);
+            a_Db += cv::norm(s_Cb - a_Mb, cv::NORM_L1);
+          }
+        }
+      }
+      a_Dr /= (valid_count * dH * dW);
+      a_Db /= (valid_count * dH * dW);
+      ROS_DEBUG("a_Mr/a_Mb=%lf/%lf, a_Dr/a_Db=%lf/%lf", a_Mr, a_Mb, a_Dr, a_Db);
+      // ROS_INFO("a_Dr/a_Db=%lf/%lf", a_Dr, a_Db);
+
+      std::vector<Color> white;
+      //cv::Mat canvas(img.rows, img.cols, CV_8UC1);
+      for (int r = 0; r < nH; ++r)
+      {
+        for (int c = 0; c < nW; ++c)
+        {
+          if (valid[r][c])
+          {
+            cv::Mat s_Cr = Cr(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_Cb = Cb(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_Y = Y(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_R = R(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_G = G(cv::Rect(c * dW, r * dH, dW, dH));
+            cv::Mat s_B = B(cv::Rect(c * dW, r * dH, dW, dH));
+
+            cv::Mat mask = cv::abs(s_Cr - (1.5 * a_Mr + a_Dr)) < 1.5 * a_Dr;
+            mask ^= cv::abs(s_Cb - (1.0 * a_Mb + a_Db)) < 1.5 * a_Db;
+            // std::stringstream ss; ss << r * nW + c;
+            // cv::imshow(ss.str(), mask * 255);
+            // mask.copyTo(canvas(cv::Rect(c * dW, r * dH, dW, dH)));
+            std::vector<cv::Point> white_list;
+            cv::findNonZero(mask, white_list);
+            for (int i = 0; i < white_list.size(); ++i)
+            {
+              white.push_back(Color(
+                  s_Y.at<uchar>(white_list[i].y, white_list[i].x), 
+                  s_R.at<uchar>(white_list[i].y, white_list[i].x), 
+                  s_G.at<uchar>(white_list[i].y, white_list[i].x),
+                  s_B.at<uchar>(white_list[i].y, white_list[i].x)
+              ));
+            }
+          }
+        }
+      }
+      // cv::imshow("canvas", canvas);
+      if (white.size() < 1)
+      {
+        ROS_WARN("Too few white point");
+        continue;
+      }
+      std::sort(white.begin(), white.end());
+      double M_r1 = 0.0, M_g1 = 0.0, M_b1 = 0.0;
+      int n_white = std::ceil(white.size() * 0.1);
+      for (int i = 0; i < n_white; ++i)
+      {
+        M_r1 += white[i].r;
+        M_g1 += white[i].g;
+        M_b1 += white[i].b;
+      }
+      M_r1 /= n_white;
+      M_g1 /= n_white;
+      M_b1 /= n_white;
+      ROS_DEBUG("white RGB=(%lf,%lf,%lf)", M_r1, M_g1, M_b1);
+
+      int dr = (M_g1 - M_r1) * 0.5;
+      int db = (M_g1 - M_b1) * 0.5;
+      ROS_DEBUG("dr/db=%d/%d", dr, db);
+
+      if (dr == 0 && db == 0)
+      {
+        ROS_DEBUG("No need to reset white balance");
+        continue;
+      }
+
+      uint wb = PointGreyCamera::getWhiteBalance();
+      bool awb = false;
+      uint16_t red = wb & 0xfff;
+      uint16_t blue = (wb >> 12) & 0xfff;
+      // ROS_INFO("%x:%d,%d", wb, red, blue);
+
+      red += dr;
+      blue += db;
+      PointGreyCamera::setWhiteBalance(awb, blue, red);
+      ROS_INFO("Reset white balance to red/blue=%d/%d", red, blue);
+    }
+
+    awb_img_.release();
+    lock.unlock();
+    // cv::waitKey(10);
+    rate.sleep();
+  }
+}
+

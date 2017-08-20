@@ -45,6 +45,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 // FlyCapture SDK from Point Grey
 #include "flycapture/FlyCapture2.h"
 
+#include <opencv2/opencv.hpp>
+#include <boost/thread.hpp>
+
 
 class PointGreyCamera
 {
@@ -198,6 +201,11 @@ private:
   unsigned int packet_size_;
   /// GigE packet delay:
   unsigned int packet_delay_;
+  ///
+  bool auto_white_balance_software_;
+  cv::Mat awb_img_;
+  boost::mutex awb_mutex_;
+  boost::shared_ptr<boost::thread> awb_thread_;
 
   /*!
   * \brief Changes the video mode of the connected camera.
@@ -347,6 +355,8 @@ private:
   * \param packet_delay The packet delay value to use.
   */
   void setupGigEPacketDelay(FlyCapture2::PGRGuid & guid, unsigned int packet_delay);
+
+  void autoAdjustWhiteBalance();
 
 public:
   /*!
