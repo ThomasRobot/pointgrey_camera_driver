@@ -1318,10 +1318,10 @@ void PointGreyCamera::autoAdjustWhiteBalance()
           Mb[r][c] = cv::mean(s_Cb)[0];
           double Dr = cv::norm(s_Cr - Mr[r][c], cv::NORM_L1)/(dW*dH);
           double Db = cv::norm(s_Cb - Mb[r][c], cv::NORM_L1)/(dW*dH);
-          if (Dr < 1.5 || Db < 1.5)
+          if (Dr < 0.1 || Db < 0.1)
             valid[r][c] = false;
-          // ROS_INFO("Mr/Mb of (%d,%d) is %lf/%lf", r, c, Mr[r][c], Mb[r][c]);
-          // ROS_INFO("Dr/Db of (%d,%d) is %lf/%lf", r, c, Dr, Db);
+           // ROS_INFO("Mr/Mb of (%d,%d) is %lf/%lf", r, c, Mr[r][c], Mb[r][c]);
+           // ROS_INFO("Dr/Db of (%d,%d) is %lf/%lf", r, c, Dr, Db);
         }
       }
 

@@ -579,7 +579,7 @@ private:
   void imuPacketCounterCallback(const custom_msgs::PacketCounterConstPtr& msg)
   {
     ROS_DEBUG("PC:%d", msg->counter);
-    if ((msg->counter % 16) == 0)
+    if ((msg->counter % 25) == 0)
     {
       imu_packet_counter_time_ = msg->header.stamp;
       is_imu_packet_counter_avalible_ = true;
