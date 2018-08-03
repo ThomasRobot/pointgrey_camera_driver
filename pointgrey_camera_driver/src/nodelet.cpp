@@ -106,6 +106,8 @@ private:
       wb_blue_ = config.white_balance_blue;
       wb_red_ = config.white_balance_red;
 
+      rotate_180_ = config.rotate_180;
+
       // Store CameraInfo binning information
       binning_x_ = 1;
       binning_y_ = 1;
@@ -485,6 +487,8 @@ private:
             // Get the image from the camera library
             NODELET_DEBUG("Starting a new grab from camera.");
             pg_.grabImage(wfov_image->image, frame_id_);
+            if (rotate_180_)
+              imrotateInPlace(wfov_image->image);
 
             // Set other values
             wfov_image->header.frame_id = frame_id_;
@@ -586,6 +590,29 @@ private:
     }
   }
 
+  void imrotateInPlace(sensor_msgs::Image& img)
+  {
+    NODELET_INFO("img.data.size()=%lu", img.data.size());
+    uchar *tmp = new uchar[img.data.size()];
+    uchar* p1 = &img.data[0];
+    uchar* p2 = &tmp[img.data.size()-1];
+    for (int i = 0; i < img.width * img.height; ++i)
+    {
+      // memcpy(p2, p1, 3);
+      // p1 += 3;
+      // p2 -= 3;
+      *p2 = *p1;
+       p1++;
+       p2--;
+    }
+    NODELET_INFO("step1 done");
+
+    memcpy(img.data.data(), tmp, img.height * img.width * 1);
+    delete tmp;
+
+    img.encoding = "bayer_bggr8";
+  }
+
   boost::shared_ptr<dynamic_reconfigure::Server<pointgrey_camera_driver::PointGreyConfig> > srv_; ///< Needed to initialize and keep the dynamic_reconfigure::Server in scope.
   boost::shared_ptr<image_transport::ImageTransport> it_; ///< Needed to initialize and keep the ImageTransport in scope.
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_; ///< Needed to initialize and keep the CameraInfoManager in scope.
@@ -607,6 +634,8 @@ private:
   double gain_;
   uint16_t wb_blue_;
   uint16_t wb_red_;
+
+  bool rotate_180_;
 
   // Parameters for cameraInfo
   size_t binning_x_; ///< Camera Info pixel binning along the image x axis.
@@ -633,6 +662,7 @@ private:
   bool is_imu_packet_counter_avalible_;
   ros::Time imu_packet_counter_time_;
 };
+
 
 PLUGINLIB_DECLARE_CLASS(pointgrey_camera_driver, PointGreyCameraNodelet, pointgrey_camera_driver::PointGreyCameraNodelet, nodelet::Nodelet);  // Needed for Nodelet declaration
 }
