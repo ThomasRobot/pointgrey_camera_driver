@@ -55,6 +55,7 @@ include_directories(include ${POINTGREY_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 add_library(PointGreyCamera src/PointGreyCamera.cpp)
 target_link_libraries(PointGreyCamera ${POINTGREY_LIB} ${catkin_LIBRARIES})
 add_dependencies(PointGreyCamera ${PROJECT_NAME}_gencfg)
+add_dependencies(PointGreyCamera ${catkin_EXPORTED_TARGETS})
 
 add_library(PointGreyCameraNodelet src/nodelet.cpp)
 target_link_libraries(PointGreyCameraNodelet PointGreyCamera ${catkin_LIBRARIES})
